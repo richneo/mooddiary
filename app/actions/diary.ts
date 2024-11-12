@@ -1,40 +1,43 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { DiaryEntry } from "@/types/diary";
 import { cookies } from "next/headers";
+import { revalidatePath } from "next/cache";
+import { v4 as uuidv4 } from "uuid";
 import { analyzeEmotion } from "@/lib/openai";
+import type { DiaryEntry } from "@/types/diary";
 
-const STORAGE_KEY = "diaries";
+const COOKIE_NAME = "diaries";
 
-async function getDiaries(): Promise<DiaryEntry[]> {
-  const cookieStore = cookies();
-  const diariesJson = cookieStore.get(STORAGE_KEY)?.value;
-  return diariesJson ? JSON.parse(diariesJson) : [];
+export async function getDiaries(): Promise<DiaryEntry[]> {
+  const diariesCookie = cookies().get(COOKIE_NAME);
+  if (!diariesCookie) return [];
+  
+  try {
+    return JSON.parse(diariesCookie.value);
+  } catch {
+    return [];
+  }
 }
 
 async function setDiaries(diaries: DiaryEntry[]) {
-  const cookieStore = cookies();
-  cookieStore.set(STORAGE_KEY, JSON.stringify(diaries));
+  cookies().set(COOKIE_NAME, JSON.stringify(diaries));
 }
 
-export async function saveDiary(content: string, createdAt: Date = new Date()) {
+export async function saveDiary({ content }: { content: string }) {
   const diaries = await getDiaries();
   const emotion = await analyzeEmotion(content);
   
   const newDiary: DiaryEntry = {
-    id: crypto.randomUUID(),
+    id: uuidv4(),
     content,
-    createdAt,
-    updatedAt: new Date(),
     emotion,
     isAnalyzed: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
   };
-
-  diaries.push(newDiary);
-  await setDiaries(diaries);
+  
+  await setDiaries([newDiary, ...diaries]);
   revalidatePath("/");
-  return newDiary;
 }
 
 export async function updateDiary(id: string, content: string) {
@@ -78,6 +81,3 @@ export async function restoreDiaries(diaries: DiaryEntry[]) {
   await setDiaries(diaries);
   revalidatePath("/");
 }
-
-// getDiaries 함수를 export 합니다
-export { getDiaries };

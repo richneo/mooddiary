@@ -4,64 +4,44 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { saveDiary, updateDiary } from "@/app/actions/diary";
-import type { DiaryEntry } from "@/types/diary";
+import { Card } from "@/components/ui/card";
+import { saveDiary } from "@/app/actions/diary";
 import { toast } from "sonner";
-import { formatDate } from "@/lib/utils";
 import Link from "next/link";
-
-interface DiaryFormProps {
-  diary?: DiaryEntry;
-  isEditing?: boolean;
-}
 
 const AUTO_SAVE_INTERVAL = 30000; // 30초
 const DRAFT_KEY = "diary_draft";
 
-export function DiaryForm({ diary, isEditing }: DiaryFormProps) {
+export function DiaryForm() {
   const router = useRouter();
-  const [content, setContent] = useState(diary?.content || "");
+  const [content, setContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [lastSavedContent, setLastSavedContent] = useState(content);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  // 드래프트 저장
-  const saveDraft = useCallback((draftContent: string) => {
-    if (draftContent !== lastSavedContent) {
-      localStorage.setItem(DRAFT_KEY, draftContent);
-      toast.success("Draft saved successfully.");
-      setLastSavedContent(draftContent);
-      setLastSaved(new Date());
-    }
-  }, [lastSavedContent]);
-
-  // 드래프트 불러오기
+  // 드래프트 로드
   useEffect(() => {
-    if (!isEditing) {
-      const savedDraft = localStorage.getItem(DRAFT_KEY);
-      if (savedDraft && !content) {
-        setContent(savedDraft);
-        toast.info("Draft loaded");
-      }
+    const draft = localStorage.getItem(DRAFT_KEY);
+    if (draft) {
+      setContent(draft);
     }
-  }, [isEditing, content]);
+  }, []);
 
   // 자동 저장
   useEffect(() => {
-    const autoSaveTimer = setInterval(() => {
-      if (content && content !== lastSavedContent && !isSaving) {
-        saveDraft(content);
+    const interval = setInterval(() => {
+      if (content) {
+        localStorage.setItem(DRAFT_KEY, content);
+        setLastSaved(new Date());
       }
     }, AUTO_SAVE_INTERVAL);
 
-    return () => clearInterval(autoSaveTimer);
-  }, [content, lastSavedContent, isSaving, saveDraft]);
+    return () => clearInterval(interval);
+  }, [content]);
 
   // 페이지 이탈 시 경고
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (content !== lastSavedContent) {
+      if (content) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -69,21 +49,19 @@ export function DiaryForm({ diary, isEditing }: DiaryFormProps) {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [content, lastSavedContent]);
+  }, [content]);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSave = async () => {
+    if (!content.trim()) {
+      toast.error("Please write something");
+      return;
+    }
+
     setIsSaving(true);
-    
     try {
-      if (isEditing && diary) {
-        await updateDiary(diary.id, content);
-        toast.success("Diary updated successfully.");
-      } else {
-        await saveDiary(content);
-        localStorage.removeItem(DRAFT_KEY);
-        toast.success("Diary saved successfully.");
-      }
+      await saveDiary({ content });
+      localStorage.removeItem(DRAFT_KEY);
+      toast.success("Diary saved successfully!");
       router.push("/");
       router.refresh();
     } catch (error) {
@@ -94,49 +72,44 @@ export function DiaryForm({ diary, isEditing }: DiaryFormProps) {
     }
   };
 
+  const handleDraftSave = () => {
+    localStorage.setItem(DRAFT_KEY, content);
+    setLastSaved(new Date());
+    toast.success("Draft saved!");
+  };
+
   return (
     <Card className="p-4">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="flex justify-between items-center">
-          <div className="text-sm text-muted-foreground">
-            {lastSaved ? `Last saved: ${formatDate(lastSaved)}` : "Not saved yet"}
-          </div>
+      <div className="space-y-4">
+        <div className="text-sm text-muted-foreground">
+          {lastSaved
+            ? `Last saved at ${lastSaved.toLocaleTimeString()}`
+            : "Not saved yet"}
         </div>
-        
         <Textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder="Write your diary..."
           className="min-h-[300px] resize-none"
         />
-
         <div className="flex justify-between items-center">
           <Link href="/">
-            <Button
-              type="button"
-              variant="outline"
-            >
-              Home
-            </Button>
+            <Button variant="outline">Home</Button>
           </Link>
-          <div className="flex gap-2">
+          <div className="space-x-2">
             <Button
-              type="button"
               variant="outline"
-              onClick={() => saveDraft(content)}
-              disabled={isSaving || content === lastSavedContent}
+              onClick={handleDraftSave}
+              disabled={isSaving}
             >
               Save Draft
             </Button>
-            <Button 
-              type="submit" 
-              disabled={isSaving || !content.trim()}
-            >
-              {isSaving ? "Saving..." : isEditing ? "Update" : "Save"}
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? "Saving..." : "Save"}
             </Button>
           </div>
         </div>
-      </form>
+      </div>
     </Card>
   );
 } 
