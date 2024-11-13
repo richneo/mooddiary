@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma"
 import CredentialsProvider from "next-auth/providers/credentials"
 import bcrypt from "bcrypt"
 
-export const config = {
+const config = {
   adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({
@@ -42,6 +42,14 @@ export const config = {
       }
     })
   ],
+  callbacks: {
+    async session({ session, token }) {
+      return session
+    },
+    async jwt({ token }) {
+      return token
+    }
+  },
   session: {
     strategy: "jwt" as const
   },
@@ -50,4 +58,4 @@ export const config = {
   }
 } satisfies NextAuthConfig
 
-export const { auth, signIn, signOut } = NextAuth(config) 
+export const { handlers, auth, signIn, signOut } = NextAuth(config) 
